@@ -1,5 +1,7 @@
 # ipe-typst-adapter
 
+Version: 0.1.0
+
 Ipe から Typst CLI を呼び出し、Typst ソースをレンダリングした図形を Ipe に挿入する ipelet です。
 
 Typst ラベルは Ipe の通常 `text` オブジェクトではなく、元の Typst ソースを custom data に保存した再生成可能な `group` オブジェクトとして扱います。
@@ -121,6 +123,7 @@ Ipe を再起動すると反映されます。ショートカット文字列は 
 {
   "kind": "ipe-typst-label",
   "version": 1,
+  "adapter-version": "0.1.0",
   "source": "..."
 }
 ```

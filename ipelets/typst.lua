@@ -5,12 +5,15 @@
 label = "Typst"
 
 about = [[
+ipe-typst-adapter 0.1.0
+
 Insert and edit Typst-rendered labels as regeneratable Ipe groups.
 ]]
 
 local CUSTOM_KEY = "ipe-typst"
 local KIND = "ipe-typst-label"
-local VERSION = 1
+local IPELET_VERSION = "0.1.0"
+local METADATA_VERSION = 1
 local os = _G.os
 local io = _G.io
 local math = _G.math
@@ -338,7 +341,8 @@ local function encode_metadata(meta)
   return table.concat({
     CUSTOM_KEY,
     "kind=" .. KIND,
-    "version=" .. tostring(VERSION),
+    "version=" .. tostring(METADATA_VERSION),
+    "adapter-version=" .. IPELET_VERSION,
     "source-length=" .. tostring(#source),
     source,
   }, "\n")
@@ -361,7 +365,7 @@ function read_typst_metadata(obj)
   local source = rest:match("source%-length=%d+\n(.*)$")
   if source_len and source then source = source:sub(1, source_len) end
   if kind ~= KIND or not source then return nil end
-  return { kind = kind, version = version or VERSION, source = source }
+  return { kind = kind, version = version or METADATA_VERSION, source = source }
 end
 
 function get_selected_typst_object(model)
