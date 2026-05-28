@@ -17,10 +17,32 @@ local math = _G.math
 local string = _G.string
 local table = _G.table
 local ipairs = _G.ipairs
+local pairs = _G.pairs
 local pcall = _G.pcall
 local tonumber = _G.tonumber
 local tostring = _G.tostring
 local type = _G.type
+local dofile = _G.dofile
+
+local config = {
+  compile_command = "typst compile --format svg {input} {output}",
+  svgtoipe_command = "svgtoipe {input} {output}",
+  font_family = nil,
+  text_size_pt = 10,
+}
+
+local function load_user_config()
+  local home = os.getenv("HOME")
+  if not home then return end
+  local ok, user_config = pcall(dofile, home .. "/.ipe/ipe-typst.lua")
+  if ok and type(user_config) == "table" then
+    for k, v in pairs(user_config) do
+      config[k] = v
+    end
+  end
+end
+
+load_user_config()
 
 local function warn(model, text, details)
   local ok = pcall(function () model:warning(text, details) end)
@@ -31,6 +53,10 @@ end
 
 local function shell_quote(s)
   return "'" .. tostring(s):gsub("'", "'\\''") .. "'"
+end
+
+local function typst_string_quote(s)
+  return '"' .. tostring(s):gsub("\\", "\\\\"):gsub('"', '\\"') .. '"'
 end
 
 local function read_file(path)
@@ -91,34 +117,67 @@ local function command_exists(name)
   return ok
 end
 
-local function ensure_external_commands()
-  if not command_exists("typst") then
-    return nil, "`typst` was not found in PATH.",
-      "Please install Typst and make sure `typst` is executable from Ipe."
+local function template_command_name(template)
+  return tostring(template or ""):match("^%s*(%S+)")
+end
+
+local function validate_command_template(name, template)
+  if type(template) ~= "string" or template == "" then
+    return nil, name .. " is not configured.", nil
   end
-  if not command_exists("svgtoipe") then
-    return nil, "`svgtoipe` was not found in PATH.",
-      "Please install svgtoipe and make sure `svgtoipe` is executable from Ipe."
+  if not template:match("{input}") or not template:match("{output}") then
+    return nil, name .. " must contain {input} and {output}.",
+      "Current template:\n" .. template
   end
   return true
+end
+
+local function ensure_template_command(template, default_name, install_hint)
+  local command = template_command_name(template)
+  if command and not command_exists(command) then
+    return nil, "`" .. command .. "` was not found in PATH.",
+      install_hint or ("Please make sure `" .. command .. "` is executable from Ipe.")
+  end
+  return true
+end
+
+local function expand_command(template, vars)
+  return template
+    :gsub("{input}", shell_quote(vars.input))
+    :gsub("{output}", shell_quote(vars.output))
+    :gsub("{dir}", shell_quote(vars.dir))
 end
 
 function make_typst_document(source, options)
   options = options or {}
   local width = options.page_width or "auto"
   local height = options.page_height or "auto"
-  local text_size = options.text_size or "10pt"
+  local text_size = options.text_size or tostring(options.text_size_pt or config.text_size_pt) .. "pt"
   local fill = options.fill or "none"
+  local font_family = options.font_family or config.font_family
+  local text_args = "size: " .. text_size
+  if font_family and font_family ~= "" then
+    text_args = text_args .. ", font: " .. typst_string_quote(font_family)
+  end
   return string.format([[
 #set page(width: %s, height: %s, margin: 0pt, fill: %s)
-#set text(size: %s)
+#set text(%s)
 
 %s
-]], width, height, fill, text_size, source)
+]], width, height, fill, text_args, source)
 end
 
 function render_typst_to_ipe(source, options)
-  local ok, text, details = ensure_external_commands()
+  local ok, text, details = validate_command_template("compile_command", config.compile_command)
+  if not ok then return nil, text, details end
+  ok, text, details = validate_command_template("svgtoipe_command", config.svgtoipe_command)
+  if not ok then return nil, text, details end
+
+  ok, text, details = ensure_template_command(config.compile_command, "typst",
+    "Please install Typst and make sure the configured compile_command is executable from Ipe.")
+  if not ok then return nil, text, details end
+  ok, text, details = ensure_template_command(config.svgtoipe_command, "svgtoipe",
+    "Please install svgtoipe and make sure the configured svgtoipe_command is executable from Ipe.")
   if not ok then return nil, text, details end
 
   local dir, err = make_temp_dir()
@@ -135,7 +194,11 @@ function render_typst_to_ipe(source, options)
     return nil, "Could not write Typst source.", write_err
   end
 
-  local cmd = "typst compile " .. shell_quote(typ_path) .. " " .. shell_quote(svg_path)
+  local cmd = expand_command(config.compile_command, {
+    input = typ_path,
+    output = svg_path,
+    dir = dir,
+  })
   ok, _, err = run_command(cmd)
   if not ok then
     local details_text = (err or "")
@@ -144,7 +207,11 @@ function render_typst_to_ipe(source, options)
     return nil, "Typst compilation failed.", details_text
   end
 
-  cmd = "svgtoipe " .. shell_quote(svg_path) .. " " .. shell_quote(ipe_path)
+  cmd = expand_command(config.svgtoipe_command, {
+    input = svg_path,
+    output = ipe_path,
+    dir = dir,
+  })
   ok, _, err = run_command(cmd)
   if not ok then
     local details_text = (err or "")

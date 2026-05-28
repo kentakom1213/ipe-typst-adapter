@@ -52,6 +52,40 @@ Typst source
 挿入済みの Typst ラベルを 1 つ選択し、`Typst > Re-render Typst Label` を選びます。
 保存済みの Typst ソースを使って再描画します。
 
+## 設定
+
+デフォルト設定は `ipelets/typst.lua` の先頭にあります。さらに、存在する場合は `~/.ipe/ipe-typst.lua` を読み込み、設定を上書きします。
+
+例:
+
+```lua
+return {
+  compile_command = "typst compile --format svg --font-path /home/<user>/.local/share/fonts {input} {output}",
+  svgtoipe_command = "svgtoipe {input} {output}",
+  font_family = "Noto Sans CJK JP",
+  text_size_pt = 10,
+}
+```
+
+`compile_command` と `svgtoipe_command` では、次の placeholder を使えます。
+
+- `{input}`: 入力ファイル
+- `{output}`: 出力ファイル
+- `{dir}`: 一時ディレクトリ
+
+`{input}` と `{output}` は必須です。ファイルパスは ipelet 側で shell quote してから展開します。
+
+日本語フォントを使う場合は、先に Typst からフォントが見えているか確認してください。
+
+```sh
+typst fonts
+typst fonts --font-path ~/.local/share/fonts
+```
+
+表示されたフォント名を `font_family` に設定してください。`font_family` が未設定の場合、wrapper 文書ではフォントを指定しません。
+
+`compile_command` と `svgtoipe_command` は shell に渡されます。信頼できるローカル設定だけを使ってください。
+
 ## MVP の制限
 
 - Typst ラベルは Ipe text ではなく group object です。
