@@ -18,7 +18,9 @@ local string = _G.string
 local table = _G.table
 local ipairs = _G.ipairs
 local pairs = _G.pairs
+local next = _G.next
 local pcall = _G.pcall
+local setmetatable = _G.setmetatable
 local tonumber = _G.tonumber
 local tostring = _G.tostring
 local type = _G.type
@@ -77,6 +79,53 @@ end
 
 local function remove_tree(path)
   os.execute("rm -rf " .. shell_quote(path))
+end
+
+local function xml_id_suffix(s)
+  return tostring(s):gsub("[^A-Za-z0-9_-]", "_")
+end
+
+local function set_svg_path_fill(symbol, fill)
+  return symbol:gsub("<path([^>]*)>", function (attrs)
+    if attrs:match("%sfill=") then
+      attrs = attrs:gsub('%sfill="[^"]*"', ' fill="' .. fill .. '"')
+      return "<path" .. attrs .. ">"
+    end
+    return '<path fill="' .. fill .. '"' .. attrs .. ">"
+  end)
+end
+
+local function patch_svg_use_fill(svg)
+  local symbols = {}
+  for symbol, id in svg:gmatch('(<symbol%s+[^>]-id="([^"]+)"[^>]*>.-</symbol>)') do
+    symbols[id] = symbol
+  end
+  if not next(symbols) then return svg end
+
+  local clones = {}
+  local clone_order = {}
+  svg = svg:gsub("<use%s+[^>]*/>", function (tag)
+    local href = tag:match('xlink:href="#([^"]+)"') or tag:match('href="#([^"]+)"')
+    local fill = tag:match('%sfill="([^"]+)"')
+    if not href or not fill or fill == "none" or not symbols[href] then return tag end
+
+    local clone_id = href .. "-ipe-typst-fill-" .. xml_id_suffix(fill)
+    if not clones[clone_id] then
+      local clone = symbols[href]:gsub('id="[^"]+"', 'id="' .. clone_id .. '"', 1)
+      clone = set_svg_path_fill(clone, fill)
+      clones[clone_id] = clone
+      clone_order[#clone_order + 1] = clone_id
+    end
+    return tag:gsub('(xlink:href=)"#[^"]+"', '%1"#' .. clone_id .. '"', 1)
+      :gsub('(href=)"#[^"]+"', '%1"#' .. clone_id .. '"', 1)
+  end)
+
+  if #clone_order == 0 then return svg end
+  local clone_text = {}
+  for _, clone_id in ipairs(clone_order) do
+    clone_text[#clone_text + 1] = clones[clone_id]
+  end
+  return svg:gsub("</defs>", table.concat(clone_text, "\n") .. "\n</defs>", 1)
 end
 
 ----------------------------------------------------------------------
@@ -207,6 +256,17 @@ function render_typst_to_ipe(source, options)
     return nil, "Typst compilation failed.", details_text
   end
 
+  local svg, svg_read_err = read_file(svg_path)
+  if not svg then
+    remove_tree(dir)
+    return nil, "Could not read generated SVG.", svg_read_err
+  end
+  local wrote_svg, svg_write_err = write_file(svg_path, patch_svg_use_fill(svg))
+  if not wrote_svg then
+    remove_tree(dir)
+    return nil, "Could not patch generated SVG.", svg_write_err
+  end
+
   cmd = expand_command(config.svgtoipe_command, {
     input = svg_path,
     output = ipe_path,
@@ -316,9 +376,69 @@ function replace_object_preserving_transform(model, old_index, old_obj, new_obj)
   model:register(t)
 end
 
+local function move_object_bbox_to_position(obj, pos)
+  local box = ipe.Rect()
+  obj:addToBBox(box, ipe.Matrix(), false)
+  if box:isEmpty() then
+    obj:setMatrix(ipe.Translation(pos))
+    return
+  end
+  local delta = pos - box:bottomLeft()
+  obj:setMatrix(ipe.Translation(delta) * obj:matrix())
+end
+
+local function matrix_for_object_bbox_at_position(obj, pos)
+  local box = ipe.Rect()
+  obj:addToBBox(box, ipe.Matrix(), false)
+  if box:isEmpty() then return ipe.Translation(pos) end
+  return ipe.Translation(pos - box:bottomLeft()) * obj:matrix()
+end
+
 ----------------------------------------------------------------------
 -- UI layer
 ----------------------------------------------------------------------
+
+TYPSTPASTETOOL = {}
+TYPSTPASTETOOL.__index = TYPSTPASTETOOL
+
+function TYPSTPASTETOOL:new(model, obj)
+  local tool = {}
+  setmetatable(tool, TYPSTPASTETOOL)
+  tool.model = model
+  tool.obj = obj
+  tool.pos = model.ui:pos()
+  model.ui:pasteTool(obj, tool)
+  tool.setColor(1.0, 0, 0)
+  tool:mouseMove()
+  return tool
+end
+
+function TYPSTPASTETOOL:placedObject()
+  local obj = self.obj:clone()
+  obj:setMatrix(matrix_for_object_bbox_at_position(obj, self.pos))
+  return obj
+end
+
+function TYPSTPASTETOOL:mouseButton(button, modifiers, press)
+  if not press then return end
+  self.pos = self.model.ui:pos()
+  self.model.ui:finishTool()
+  self.model:creation("create Typst label", self:placedObject())
+end
+
+function TYPSTPASTETOOL:mouseMove(button, modifiers)
+  self.pos = self.model.ui:pos()
+  self.setMatrix(matrix_for_object_bbox_at_position(self.obj, self.pos))
+  self.model.ui:update(false)
+end
+
+function TYPSTPASTETOOL:key(code, modifiers, text)
+  if text == "\027" then
+    self.model.ui:finishTool()
+    return true
+  end
+  return false
+end
 
 local function typst_source_dialog(model, title, initial)
   local d = ipeui.Dialog(model.ui:win(), title)
@@ -345,11 +465,7 @@ function insert_typst_label(model)
   end
   attach_typst_metadata(obj, { source = source })
 
-  local pos = ipe.Vector(0, 0)
-  local ok, ui_pos = pcall(function () return model.ui:pos() end)
-  if ok and ui_pos then pos = ui_pos end
-  obj:setMatrix(ipe.Translation(pos))
-  model:creation("create Typst label", obj)
+  TYPSTPASTETOOL:new(model, obj)
 end
 
 function edit_typst_label(model)
