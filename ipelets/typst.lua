@@ -31,6 +31,7 @@ local config = {
   svgtoipe_command = "svgtoipe {input} {output}",
   font_family = nil,
   text_size_pt = 10,
+  shortcuts = {},
 }
 
 local function load_user_config()
@@ -45,6 +46,34 @@ local function load_user_config()
 end
 
 load_user_config()
+
+local function shortcut_value(value)
+  if type(value) == "string" and value ~= "" then return value end
+  return nil
+end
+
+local function configure_shortcuts()
+  if type(shortcuts) ~= "table" then return end
+
+  local ipelet_name = name or "typst"
+  local configured = config.shortcuts
+  if type(configured) ~= "table" then configured = {} end
+
+  local mappings = {
+    { method = 1, value = configured.insert or config.insert_shortcut or config.shortcut },
+    { method = 2, value = configured.edit or config.edit_shortcut },
+    { method = 3, value = configured.rerender or configured.re_render or config.rerender_shortcut },
+  }
+
+  for _, mapping in ipairs(mappings) do
+    local value = shortcut_value(mapping.value)
+    if value then
+      shortcuts["ipelet_" .. tostring(mapping.method) .. "_" .. ipelet_name] = value
+    end
+  end
+end
+
+configure_shortcuts()
 
 local function warn(model, text, details)
   local ok = pcall(function () model:warning(text, details) end)

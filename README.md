@@ -60,10 +60,15 @@ Typst source
 
 ```lua
 return {
-  compile_command = "typst compile --format svg --font-path /home/<user>/.local/share/fonts {input} {output}",
+  compile_command = "typst compile --format svg --font-path /home/powell/.local/share/fonts {input} {output}",
   svgtoipe_command = "svgtoipe {input} {output}",
   font_family = "Noto Sans CJK JP",
   text_size_pt = 10,
+  shortcuts = {
+    insert = "Ctrl+Shift+L",
+    edit = "Ctrl+Shift+E",
+    rerender = "Ctrl+Alt+R",
+  },
 }
 ```
 
@@ -85,6 +90,16 @@ typst fonts --font-path ~/.local/share/fonts
 表示されたフォント名を `font_family` に設定してください。`font_family` が未設定の場合、wrapper 文書ではフォントを指定しません。
 
 `compile_command` と `svgtoipe_command` は shell に渡されます。信頼できるローカル設定だけを使ってください。
+
+### ショートカット
+
+`shortcuts` では次の操作に Ipe のキーボードショートカットを指定できます。
+
+- `insert`: `Insert Typst Label...`
+- `edit`: `Edit Typst Label...`
+- `rerender`: `Re-render Typst Label`
+
+Ipe を再起動すると反映されます。ショートカット文字列は Ipe の `shortcuts.lua` と同じ形式です。例: `Ctrl+Alt+T`, `Shift+J`, `F5`。
 
 ## MVP の制限
 
