@@ -1,6 +1,6 @@
 # ipe-typst-adapter
 
-Ipe から Typst CLI を呼び出し、Typst ソースをレンダリングした図形を Ipe に挿入する MVP ipelet です。
+Ipe から Typst CLI を呼び出し、Typst ソースをレンダリングした図形を Ipe に挿入する ipelet です。
 
 Typst ラベルは Ipe の通常 `text` オブジェクトではなく、元の Typst ソースを custom data に保存した再生成可能な `group` オブジェクトとして扱います。
 
@@ -101,7 +101,7 @@ typst fonts --font-path ~/.local/share/fonts
 
 Ipe を再起動すると反映されます。ショートカット文字列は Ipe の `shortcuts.lua` と同じ形式です。例: `Ctrl+Alt+T`, `Shift+J`, `F5`。
 
-## MVP の制限
+## 注意
 
 - Typst ラベルは Ipe text ではなく group object です。
 - 通常の Ipe text editor では編集できません。
@@ -115,7 +115,7 @@ Ipe を再起動すると反映されます。ショートカット文字列は 
 
 挿入した group object の custom data に `ipe-typst` メタデータを保存します。
 
-MVP で保存する情報は次です。
+保存する情報は次です。
 
 ```json
 {
